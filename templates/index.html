@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Test Case Generation and Verification System</title>
+    <!-- Include Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- Custom styles -->
+    <style>
+        body {
+            background-color: #f0f2f5;
+        }
+        h1 {
+            font-weight: bold;
+            color: #343a40;
+        }
+        h2 {
+            font-weight: bold;
+            color: #343a40;
+        }
+        .modal-header, .modal-footer {
+            background-color: #e9ecef;
+        }
+        .list-group-item {
+            border: none;
+            background-color: #f8f9fa;
+        }
+        /* Styles for centering and styling the form */
+        .upload-container {
+            height: 100vh;
+        }
+        .upload-card {
+            border: none;
+            background-color: #ffffff;
+            padding: 40px 30px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .custom-file-input ~ .custom-file-label::after {
+            content: "Browse";
+        }
+        .btn-primary {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+        .btn-primary:hover {
+            background-color: #0069d9;
+            border-color: #0062cc;
+        }
+        /* Styles for the loading screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255,255,255,0.8);
+            z-index: 1060;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .loading-screen p {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            color: #343a40;
+        }
+    </style>
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap JS (for modals etc.) -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</head>
+<body>
+    <div class="container upload-container d-flex align-items-center justify-content-center">
+        <div class="text-center">
+        <h1 class="mb-4">Smart Test Case Generation System</h1>
+        </div>
+        <div class="upload-card text-center">
+            <h2 class="mb-4">Upload SRS Document To Continue</h2>
+            <form action="{{ url_for('upload_document') }}" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <div class="custom-file text-left">
+                        <input type="file" name="file" accept="application/pdf" required class="custom-file-input" id="customFile">
+                        <label class="custom-file-label" for="customFile">Choose file</label>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Upload and Process</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="loading-screen d-none">
+        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+        <p>Please wait while we process your document...</p>
+    </div>
+
+    <!-- Modal to display requirements and test cases -->
+    <div id="resultModal" class="modal fade" tabindex="-1" role="dialog">
+        <!-- Modal content -->
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title">Results</h2>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <h3>Requirements</h3>
+                    <ul id="requirementsList" class="list-group mb-4"></ul>
+                    <h3>Test Cases</h3>
+                    <ul id="testCasesList" class="list-group"></ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom JavaScript -->
+    <script>
+    // Update the label of the custom file input when a file is selected
+    $('.custom-file-input').on('change', function() {
+        var fileName = $(this).val().split('\\').pop();
+        $(this).siblings('.custom-file-label').addClass("selected").html(fileName);
+    });
+
+    $('form').on('submit', function(event) {
+        event.preventDefault();
+        var formData = new FormData(this);
+
+        // Show the loading screen
+        $('#loadingScreen').removeClass('d-none');
+
+        $.ajax({
+            url: $(this).attr('action'),
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(data) {
+                // Hide the loading screen
+                $('#loadingScreen').addClass('d-none');
+
+                // Clear previous results
+                $('#requirementsList').empty();
+                $('#testCasesList').empty();
+
+                // Populate the modal with new data
+                let requirements = data.requirements;
+                let test_cases = data.test_cases;
+
+                for (let req of requirements) {
+                    $('#requirementsList').append('<li class="list-group-item">' + req + '</li>');
+                }
+
+                for (let tc of test_cases) {
+                    $('#testCasesList').append('<li class="list-group-item">' + tc + '</li>');
+                }
+
+                // Show the modal
+                $('#resultModal').modal('show');
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                // Hide the loading screen
+                $('#loadingScreen').addClass('d-none');
+                // Handle the error
+                alert('An error occurred while processing your request. Please try again.');
+            }
+        });
+    });
+    </script>
+</body>
+</html>

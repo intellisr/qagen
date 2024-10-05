@@ -1,0 +1,11 @@
+flask
+langchain-community
+pinecone
+pypdf
+python-docx
+langchain
+sentence-transformers
+huggingface_hub
+langchain-google-genai
+langchain-huggingface
+pymongo[srv]
