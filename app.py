@@ -68,7 +68,42 @@ def add_embeddings(document_name):
                 'values': embedding,
                 'metadata': {'text': sentence}
             }])
-      
+            
+def dict_to_html(data):
+    html_output = ""
+    for key, value in data.items():
+        html_output += f'<div class="item">\n'
+        html_output += f'    <div class="key">{key}:</div>\n'
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                sub_value_new=str(sub_value)
+                sub_value_new2=sub_value_new.replace("[","").replace("[","").replace("'","")
+                html_output += f'    <div class="sub-item">\n'
+                html_output += f'        <div class="sub-key">{sub_key}:</div>\n'
+                html_output += f'        <div class="sub-value">{sub_value_new2}</div>\n\n'
+                html_output += f'    </div>\n\n'
+        else:
+            html_output += f'    <div class="value">{value}</div>\n'
+        html_output += f'</div>\n<br/>'
+    return html_output
+
+def text_to_html(text):
+    html_output = ""
+    lines = text.split("Heading:")
+    
+    for section in lines:
+        if section.strip():  # Ignore any empty strings
+            parts = section.split('*')
+            heading = parts[0].strip()  # Extract heading
+            html_output += f'<h3>{heading}</h3>\n'
+            
+            if len(parts) > 1:
+                html_output += "<ul>\n"
+                for item in parts[1:]:
+                    html_output += f'  <li>{item.strip()}</li>\n'
+                html_output += "</ul>\n"
+    
+    return html_output      
 # Routes
 @app.route('/')
 def index():
@@ -82,7 +117,11 @@ def upload_document():
     file = request.files['file']
     if file:
         document_name = file.filename
-        file.save(document_name)
+        current_files = os.listdir()  # Lists files in the current directory    
+        if document_name in current_files:
+            print("Doc exist")
+        else:
+            file.save(document_name)
 
     # Find the document in the 'testcases' collection
     doc_data = doc_collection.find_one({"document_name": document_name})
@@ -136,19 +175,22 @@ def upload_document():
       # Agent 4: Testcase Verification and regeneration
       test_case_mapping_agent = TestCaseMappingAgent(llm, vector_db, embedding_model)
       # Map and generate/verify test cases for each requirement using the TestCaseMappingAgent
+      requirements=[]
+      test_cases=[]
       for test_case_doc in test_case_docs:
         # Access the test cases from the document
-        test_cases = test_case_doc.get("test_cases")
+        test_case = test_case_doc.get("test_cases")
+        test_string=dict_to_html(test_case)
+        test_cases.append(test_string)
         requirement = test_case_doc.get("requirement")
+        req=text_to_html(requirement)
+        requirements.append(req)
         verified_test_cases = test_case_mapping_agent.map_requirements_to_test_cases(requirement)
-        print(verified_test_cases)
-
-        return jsonify({
-            'requirements': requirements_dict,
+    
+    return jsonify({
+            'requirements': requirements,
             'test_cases': test_cases
         })
-    
-    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)
