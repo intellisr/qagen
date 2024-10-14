@@ -14,7 +14,7 @@ import json
 
 app = Flask(__name__)
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCcjopgzEHHfNrbSGwrTQvUc91RjUJL-kg"
+os.environ["GOOGLE_API_KEY"] = "AIzaSyCwvltxnW7ODbCp2QxXVa1swGXoCXm2jGM"
 
 # Initialize the Gemini model for LLM tasks
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro")

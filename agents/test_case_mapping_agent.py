@@ -36,12 +36,12 @@ class TestCaseMappingAgent:
             test_case_embedding = self.embedding_model.embed_documents([test_case_text])[0]
             similarity = self.compute_similarity(requirement_embedding, test_case_embedding)
             print(similarity)
-            if similarity > 0.2:
+            if similarity > 0.5:
                 relevant_test_cases.append({
                     "test_case": test_case,
                     "similarity": similarity
                 })      
-        has_enough_test_cases = len(relevant_test_cases) >= len(test_cases)/4
+        has_enough_test_cases = len(relevant_test_cases) >= 2
         return has_enough_test_cases, relevant_test_cases
 
     def extract_test_case_text(self, test_cases_list):
