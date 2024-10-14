@@ -1,4 +1,6 @@
 from agents.test_case_generator_agent import TestCaseGeneratorAgent
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 # Agent 4: TestCaseMappingAgent
 class TestCaseMappingAgent:
@@ -15,47 +17,60 @@ class TestCaseMappingAgent:
             include_values=False,
             include_metadata=True
         )
-        is_present = any(result['score'] > 0.85 for result in query_result['matches'])
-        return is_present, query_result['matches']
+        if not query_result['matches']:
+            return False, "Requirement not found in SRS document."
 
-    def check_test_case_coverage(self, requirement_embedding):
-        query_result = self.vector_db.query(
-            vector=requirement_embedding,
-            top_k=10,
-            include_values=False,
-            include_metadata=True
-        )
-        has_enough_test_cases = len(query_result['matches']) >= 3
-        return has_enough_test_cases, query_result['matches']
+        best_match = query_result['matches'][0]
+        similarity_score = best_match['score']
 
-    def extract_test_case_text(self,test_cases_dict):
+        # Assuming a similarity score threshold for correctness
+        if similarity_score < 0.5:
+            return False, f"Requirement is incorrect or does not match the SRS document closely enough (similarity score: {similarity_score})."
+
+        return True, best_match
+
+    def check_test_case_coverage(self, requirement_embedding, test_cases):
+        relevant_test_cases = []
+        for test_case in test_cases:
+            test_case_text = f"{test_case.get('description', '')} {test_case.get('steps', '')} {test_case.get('expected_result', '')}"
+            test_case_embedding = self.embedding_model.embed_documents([test_case_text])[0]
+            similarity = self.compute_similarity(requirement_embedding, test_case_embedding)
+            print(similarity)
+            if similarity > 0.2:
+                relevant_test_cases.append({
+                    "test_case": test_case,
+                    "similarity": similarity
+                })      
+        has_enough_test_cases = len(relevant_test_cases) >= len(test_cases)/4
+        return has_enough_test_cases, relevant_test_cases
+
+    def extract_test_case_text(self, test_cases_list):
         texts = []
-        for tc_id, tc_content in test_cases_dict.items():
+        for tc_content in test_cases_list:
             description = tc_content.get('description', '')
-            preconditions = tc_content.get('preconditions', '')
-            steps = ' '.join(tc_content.get('steps', []))
+            steps = tc_content.get('steps', '')
             expected_result = tc_content.get('expected_result', '')
-            combined_text = f"{description} {preconditions} {steps} {expected_result}"
+            combined_text = f"{description} {steps} {expected_result}"
             texts.append(combined_text)
         return ' '.join(texts)
 
-    def parse_requirements(self,requirement_text):
-      requirements_dict = {}
-      current_heading = None
-      lines = requirement_text.split('\n')
-      for line in lines:
-          line = line.strip()
-          if line.startswith('Heading:'):
-              # Extract heading
-              current_heading = line.replace('Heading:', '').strip()
-              requirements_dict[current_heading] = []
-          elif line.startswith('*') and current_heading:
-              # Extract bullet point under current heading
-              requirement = line.replace('*', '').strip()
-              requirements_dict[current_heading].append(requirement)
-      return requirements_dict      
+    def parse_requirements(self, requirement_text):
+        requirements_dict = {}
+        current_heading = None
+        lines = requirement_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line.startswith('Heading:'):
+                # Extract heading
+                current_heading = line.replace('Heading:', '').strip()
+                requirements_dict[current_heading] = []
+            elif line.startswith('*') and current_heading:
+                # Extract bullet point under current heading
+                requirement = line.replace('*', '').strip()
+                requirements_dict[current_heading].append(requirement)
+        return requirements_dict
 
-    def map_requirements_to_test_cases(self, requirement_text):
+    def map_requirements_to_test_cases(self, requirement_text, test_cases):
         result_dict = {}
         requirements_dict = self.parse_requirements(requirement_text)
 
@@ -64,41 +79,38 @@ class TestCaseMappingAgent:
                 req_key = heading
                 req_value = req
                 combined_requirement = f"{heading}: {req}"
+                print(f"Processing requirement: {combined_requirement}")
 
-                is_present, similar_requirements = self.verify_requirement(combined_requirement)
+                is_correct, feedback = self.verify_requirement(combined_requirement)
 
-                if is_present and similar_requirements:
-                    similar_id = similar_requirements[0]['id']
-                    fetch_result = self.vector_db.fetch(ids=[similar_id], include_values=True)
-                    best_match_embedding = fetch_result['vectors'][similar_id]['values']
+                if is_correct:
+                    requirement_embedding = self.embedding_model.embed_documents([combined_requirement])[0]
+                    has_enough, relevant_test_cases = self.check_test_case_coverage(requirement_embedding, test_cases)
 
-                    has_enough_test_cases, matching_test_cases = self.check_test_case_coverage(best_match_embedding)
-
-                    if has_enough_test_cases:
+                    if has_enough:
                         result_dict[combined_requirement] = {
-                            "status": "Requirement found and sufficient test cases available",
-                            "test_cases": matching_test_cases
+                            "status": "Requirement is correct and has sufficient relevant test cases.",
+                            "test_cases": [tc['test_case'] for tc in relevant_test_cases]
                         }
                     else:
                         test_case_agent = TestCaseGeneratorAgent(self.llm)
                         new_test_cases, _ = test_case_agent.generate_test_cases({req_key: [req_value]})
-                        new_test_case_embedding = self.embedding_model.embed_query(new_test_cases)
-                        has_enough_test_cases, _ = self.check_test_case_coverage(new_test_case_embedding)
-
                         result_dict[combined_requirement] = {
-                            "status": "New test cases generated",
+                            "status": "Not enough relevant test cases found; generated new test cases.",
                             "test_cases": new_test_cases
                         }
                 else:
-                    test_case_agent = TestCaseGeneratorAgent(self.llm)
-                    new_test_cases, _ = test_case_agent.generate_test_cases({req_key: [req_value]})
-                    new_test_cases_text = self.extract_test_case_text(new_test_cases)
-                    new_test_case_embedding = self.embedding_model.embed_query(new_test_cases_text)
-                    has_enough_test_cases, _ = self.check_test_case_coverage(new_test_case_embedding)
-
                     result_dict[combined_requirement] = {
-                        "status": "Requirement not found, new test cases generated",
-                        "test_cases": new_test_cases
+                        "status": "Requirement is incorrect.",
+                        "feedback": feedback
                     }
 
         return result_dict
+
+    def compute_similarity(self, embedding1, embedding2):
+        # Ensure embeddings are 2D arrays
+        embedding1 = np.array(embedding1).reshape(1, -1)
+        embedding2 = np.array(embedding2).reshape(1, -1)
+        # Compute cosine similarity
+        similarity = cosine_similarity(embedding1, embedding2)[0][0]
+        return similarity

@@ -9,11 +9,12 @@ from pymongo import MongoClient
 from pinecone import Pinecone, ServerlessSpec
 import os
 import time
-
+from bson import ObjectId, json_util
+import json
 
 app = Flask(__name__)
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCAm2SkrWVol2gKNeExNlLQJPX9rHZ-bjA"
+os.environ["GOOGLE_API_KEY"] = "AIzaSyCcjopgzEHHfNrbSGwrTQvUc91RjUJL-kg"
 
 # Initialize the Gemini model for LLM tasks
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
@@ -50,6 +51,7 @@ db = client.get_database("TestCluster")
 doc_collection = db["document"]
 requirements_collection = db["requirements"]
 testcases_collection = db["testcases"]
+verified_collection = db["verified"]
 
 # Function to add embeddings to Pinecone
 def add_embeddings(document_name):
@@ -166,31 +168,45 @@ def upload_document():
         # Agent 3: Generate Test Cases
         test_case_agent = TestCaseGeneratorAgent(llm)
         for key, value in requirements_dict.items():
-            test_cases,summery = test_case_agent.generate_test_cases(value)
-            testcases_collection.insert_one({"document_name": document_name,"requirement":summery ,"test_cases": test_cases})
-            print(f"Test cases saved to MongoDB: {test_cases}")
+            if isinstance(value, dict):
+                for key2, value2 in value.items():
+                    test_cases,summery = test_case_agent.generate_test_cases({key:{key2:value2}})
+                    testcases_collection.insert_one({"document_name": document_name,"requirement":summery ,"test_cases": test_cases})
+                    print(f"Test cases saved to MongoDB: {test_cases}")
+                    time.sleep(10)
+            else:
+                test_cases,summery = test_case_agent.generate_test_cases({key:value})
+                testcases_collection.insert_one({"document_name": document_name,"requirement":summery ,"test_cases": test_cases})
+                print(f"Test cases saved to MongoDB: {test_cases}")
+                time.sleep(10)        
+            
     test_case_docs = testcases_collection.find({"document_name": document_name})
-    #-------------------------------------------------------------------------------------------
-    if len(test_case_doc) > 3:
-      # Agent 4: Testcase Verification and regeneration
-      test_case_mapping_agent = TestCaseMappingAgent(llm, vector_db, embedding_model)
-      # Map and generate/verify test cases for each requirement using the TestCaseMappingAgent
-      requirements=[]
-      test_cases=[]
-      for test_case_doc in test_case_docs:
-        # Access the test cases from the document
+    documents = list(test_case_docs)
+    # Serialize the documents using json_util
+    json_docs = json.loads(json_util.dumps(documents))
+
+    # Return the documents in the expected format
+    return jsonify({'documents': json_docs})
+
+@app.route('/verify_test_cases', methods=['POST'])
+def verify_test_cases():
+    data = request.get_json()
+    document_id = data['document_id']
+    verified_test_cases={}
+    req_data = verified_collection.find_one({"document_id": document_id})
+    if req_data:
+      print(f"Verified document found for {document_id}")
+      verified_test_cases=req_data['verified']
+    else:
+        # Retrieve the document from the database using document_id
+        test_case_doc = testcases_collection.find_one({'_id': ObjectId(document_id)})
         test_case = test_case_doc.get("test_cases")
-        test_string=dict_to_html(test_case)
-        test_cases.append(test_string)
         requirement = test_case_doc.get("requirement")
-        req=text_to_html(requirement)
-        requirements.append(req)
-        verified_test_cases = test_case_mapping_agent.map_requirements_to_test_cases(requirement)
+        test_case_mapping_agent = TestCaseMappingAgent(llm, vector_db, embedding_model)
+        verified_test_cases = test_case_mapping_agent.map_requirements_to_test_cases(requirement,test_case)
+        verified_collection.insert_one({"document_id": document_id ,"verified": verified_test_cases})
     
-    return jsonify({
-            'requirements': requirements,
-            'test_cases': test_cases
-        })
+    return jsonify({'verified_test_cases': verified_test_cases})
 
 if __name__ == '__main__':
     app.run(debug=True)

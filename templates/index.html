@@ -10,11 +10,7 @@
         body {
             background-color: #f0f2f5;
         }
-        h1 {
-            font-weight: bold;
-            color: #343a40;
-        }
-        h2 {
+        h1, h2 {
             font-weight: bold;
             color: #343a40;
         }
@@ -27,7 +23,7 @@
         }
         /* Styles for centering and styling the form */
         .upload-container {
-            height: 100vh;
+            min-height: 50vh;
         }
         .upload-card {
             border: none;
@@ -66,30 +62,20 @@
             font-size: 1.2rem;
             color: #343a40;
         }
-        .sub-key{
-            font-weight: bold;
-            color: #343a40;
-        }
-        .key{
-            font-weight: bold;
-            color: red;
-        }
         .modal-fullscreen {
             width: 100%;
             height: 100%;
             margin: 0;
             padding: 0;
-            max-width: none; /* Remove default width constraints */
+            max-width: none;
         }
-    
         .modal-content {
             height: 100%;
         }
-    
         /* Scrollable lists */
         #requirementsList, #testCasesList {
-            max-height: 80vh; /* Set a maximum height for scrollable lists relative to the viewport */
-            overflow-y: auto;  /* Enable vertical scrolling */
+            max-height: 80vh;
+            overflow-y: auto;
         }
     </style>
     <!-- jQuery -->
@@ -98,9 +84,10 @@
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </head>
 <body>
+    <!-- Upload Form -->
     <div class="container upload-container d-flex align-items-center justify-content-center">
         <div class="text-center">
-        <h1 class="mb-4">Smart Test Case Generation System</h1>
+            <h1 class="mb-4">Smart Test Case Generation System</h1>
         </div>
         <div class="upload-card text-center">
             <h2 class="mb-4">Upload SRS Document To Continue</h2>
@@ -119,30 +106,45 @@
     <!-- Loading Screen -->
     <div id="loadingScreen" class="loading-screen d-none">
         <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
-        <p>Please wait while we process your document...</p>
+        <p>Please wait, processing...</p>
     </div>
 
-    <div id="resultModal" class="modal fade" tabindex="-1" role="dialog">
-        <!-- Modal content -->
-        <div class="modal-dialog modal-fullscreen" role="document">
+    <!-- Results Section -->
+    <div id="resultsSection" class="container d-none">
+        <h2 class="mt-4">Requirements</h2>
+        <div id="requirementsContainer" class="row">
+            <!-- Requirement cards will be inserted here -->
+        </div>
+    </div>
+
+    <!-- Modal for Test Cases -->
+    <div id="testCasesModal" class="modal fade" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-dialog-scrollable modal-lg" role="document">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2 class="modal-title">Results</h2>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
+                    <h5>Test Cases</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="row">
+                        <!-- Original Test Cases -->
                         <div class="col-md-6">
-                            <h3>Requirements</h3>
-                            <ul id="requirementsList" class="list-group mb-4"></ul>
+                            <h6>Original Test Cases</h6>
+                            <ul id="testCasesList" class="list-group">
+                                <!-- Test cases will be inserted here -->
+                            </ul>
                         </div>
-                        <div class="col-md-6">
-                            <h3>Test Cases</h3>
-                            <ul id="testCasesList" class="list-group"></ul>
+                        <!-- Verified Test Cases -->
+                        <div class="col-md-6 d-none" id="verifiedTestCasesSection">
+                            <h6>Verified Test Cases</h6>
+                            <ul id="verifiedTestCasesList" class="list-group">
+                                <!-- Verified test cases will be inserted here -->
+                            </ul>
                         </div>
                     </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="verifyTestCasesBtn" type="button" class="btn btn-primary">Verify Test Cases</button>
                 </div>
             </div>
         </div>
@@ -150,56 +152,213 @@
 
     <!-- Custom JavaScript -->
     <script>
-    // Update the label of the custom file input when a file is selected
-    $('.custom-file-input').on('change', function() {
-        var fileName = $(this).val().split('\\').pop();
-        $(this).siblings('.custom-file-label').addClass("selected").html(fileName);
-    });
+        let storedDocuments = [];
 
-    $('form').on('submit', function(event) {
-        event.preventDefault();
-        var formData = new FormData(this);
+        // Update the label of the custom file input when a file is selected
+        $('.custom-file-input').on('change', function() {
+            var fileName = $(this).val().split('\\').pop();
+            $(this).siblings('.custom-file-label').addClass("selected").html(fileName);
+        });
 
-        // Show the loading screen
-        $('#loadingScreen').removeClass('d-none');
+        function textToHtml(text) {
+            let htmlOutput = "";
+            let lines = text.split("Heading:");
+        
+            lines.forEach(function(section) {
+                section = section.trim();  // Ignore any empty strings
+                if (section) {
+                    let parts = section.split('*');
+                    if (parts.length == 1){
+                        htmlOutput += `<h3>${parts[0]} Testing</h3>\n`;
+                    }else{
+                        let heading = parts[0].trim();  // Extract heading
+                        htmlOutput += `<h5>${heading}</h5>\n`;
+                        if (typeof parts === 'string' || parts instanceof String){
+                            htmlOutput += "<ul>\n";
+                            htmlOutput += `  <li>${parts.trim()}</li>\n`;
+                            htmlOutput += "</ul>\n";
+                        }else{
+                            if (parts.length > 1) {
+                                htmlOutput += "<ul>\n";
+                                for (let i = 1; i < parts.length; i++) {
+                                    htmlOutput += `  <li>${parts[i].trim()}</li>\n`;
+                                }
+                                htmlOutput += "</ul>\n";
+                            }
+                        }
+                    }
+                    
+                }
+            });
+        
+            return htmlOutput;
+        }
 
-        $.ajax({
-            url: $(this).attr('action'),
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(data) {
-                // Hide the loading screen
-                $('#loadingScreen').addClass('d-none');
+        $('form').on('submit', function(event) {
+            event.preventDefault();
+            var formData = new FormData(this);
 
-                // Clear previous results
-                $('#requirementsList').empty();
+            // Show the loading screen
+            $('#loadingScreen').removeClass('d-none');
+
+            $.ajax({
+                url: $(this).attr('action'),
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(data) {
+                    // Hide the loading screen
+                    $('#loadingScreen').addClass('d-none');
+
+                    // Clear previous results
+                    $('#requirementsContainer').empty();
+
+                    // Store the documents
+                    storedDocuments = data.documents; // Adjust according to your data structure
+
+                    // Populate the requirements cards
+                    for (let doc of storedDocuments) {
+                        let requirement = doc.requirement;
+                        let docId = doc._id.$oid || doc._id;
+                        let req=textToHtml(requirement)
+                        let cardHtml = `
+                        <div class="col-md-4">
+                            <div class="card mb-4" data-doc-id="${docId}">
+                                <div class="card-body">
+                                    <p class="card-text">${req}</p>
+                                    <a href="#" class="btn btn-primary view-test-cases">View Test Cases</a>
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                        $('#requirementsContainer').append(cardHtml);
+                    }
+
+                    // Show the results section
+                    $('#resultsSection').removeClass('d-none');
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    // Hide the loading screen
+                    $('#loadingScreen').addClass('d-none');
+                    // Handle the error
+                    alert('An error occurred while processing your request. Please try again.');
+                }
+            });
+        });
+
+        // Function to find a document by ID from the stored data
+        function findDocumentById(docId) {
+            for (let doc of storedDocuments) {
+                if ((doc._id.$oid || doc._id) === docId) {
+                    return doc;
+                }
+            }
+            return null;
+        }
+
+        // Handle click on "View Test Cases" button
+        $(document).on('click', '.view-test-cases', function(event) {
+            event.preventDefault();
+
+            // Get the document ID
+            let docId = $(this).closest('.card').data('doc-id');
+
+            // Find the document data from the stored data
+            let doc = findDocumentById(docId);
+
+            if (doc) {
+                // Populate the modal with test cases
                 $('#testCasesList').empty();
 
-                // Populate the modal with new data
-                let requirements = data.requirements;
-                let test_cases = data.test_cases;
-
-                for (let req of requirements) {
-                    $('#requirementsList').append('<li class="list-group-item">' + req + '</li>');
+                for (let tc of doc.test_cases) {
+                    let testCaseHtml = `
+                    <li class="list-group-item">
+                        <h5>${tc.test_case_id}:</h5>
+                        <p><strong>${tc.description}</strong></p>
+                        <p><strong>Steps:</strong><br>${tc.steps.replace(/\n/g, '<br>')}</p>
+                        <p><strong>Expected Result:</strong><br>${tc.expected_result}</p>
+                    </li>
+                    `;
+                    $('#testCasesList').append(testCaseHtml);
                 }
 
-                for (let tc of test_cases) {
-                    $('#testCasesList').append('<li class="list-group-item">' + tc + '</li>');
-                }
+                // Hide the verified test cases section and show the "Verify Test Cases" button
+                $('#verifiedTestCasesSection').addClass('d-none');
+                $('#verifyTestCasesBtn').removeClass('d-none');
+
+                // Store the document ID in the modal for later use
+                $('#testCasesModal').data('doc-id', docId);
 
                 // Show the modal
-                $('#resultModal').modal('show');
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                // Hide the loading screen
-                $('#loadingScreen').addClass('d-none');
-                // Handle the error
-                alert('An error occurred while processing your request. Please try again.');
+                $('#testCasesModal').modal('show');
+            } else {
+                alert('Document not found.');
             }
         });
-    });
+
+        $('#verifyTestCasesBtn').on('click', function() {
+            // Get the document ID from the modal
+            let docId = $('#testCasesModal').data('doc-id');
+            $('#loadingScreen').removeClass('d-none');
+        
+            // Send the document ID to the verify API
+            $.ajax({
+                url: '/verify_test_cases', // Replace with the actual URL of the verify API
+                type: 'POST',
+                data: JSON.stringify({ document_id: docId }),
+                contentType: 'application/json',
+                success: function(data) {
+                    // Hide the loading screen
+                    $('#loadingScreen').addClass('d-none');
+        
+                    // Display the verified details
+                    $('#verifiedTestCasesList').empty();
+                    var vt=data.verified_test_cases
+                    // Iterate over each requirement in the response
+                    for (const dr in vt) {
+                        let reqData = vt[dr];
+                        console.log(reqData)
+                        let status = reqData['status'];
+                        let testCases = reqData['test_cases'];
+                            // Create an HTML block for the requirement and its status
+                            let requirementHtml = `
+                                <li class="list-group-item">
+                                    <h5><strong>Requirement:</strong> ${dr}</h5>
+                                    <p><strong>Status:</strong> ${status}</p>
+                                </li>
+                            `;
+        
+                            $('#verifiedTestCasesList').append(requirementHtml);
+                            // Iterate over the test cases for this requirement
+                            if(testCases){
+                                for (let tc of testCases) {
+                                    let verifiedHtml = `
+                                        <li class="list-group-item ml-4">
+                                            <h6><strong>${tc.test_case_id}: ${tc.description}</strong></h6>
+                                            <p><strong>Steps:</strong><br>${tc.steps.replace(/\n/g, '<br>')}</p>
+                                            <p><strong>Expected Result:</strong><br>${tc.expected_result}</p>
+                                        </li>
+                                    `;
+                                    $('#verifiedTestCasesList').append(verifiedHtml);
+                                }
+                            }
+
+                            $('#verifiedTestCasesList').append( '<h5>---------------------------------</h5></br>');
+                                
+                    }
+        
+                    // Hide the "Verify Test Cases" button and show the verified test cases section
+                    $('#verifyTestCasesBtn').addClass('d-none');
+                    $('#verifiedTestCasesSection').removeClass('d-none');
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    $('#loadingScreen').addClass('d-none');
+                    alert('An error occurred while verifying the test cases.');
+                }
+            });
+        });
+        
     </script>
 </body>
 </html>
